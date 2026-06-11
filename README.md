@@ -87,24 +87,3 @@ python run_flashing.py
 python -m pytest tests/ --html=report.html
 ```
 运行完成后，直接双击根目录下的 [report.html](report.html) 查看精美的测试结果图表。
-
----
-
-## 🎓 经纬恒润/恒润测试岗面试重点（Technical Q&A）
-
-### Q1: 为什么要下载 Flash Driver 到 RAM 中，而不是直接在 App 中固化 Flash 擦写代码？
-*   **功能安全限制**：如果将擦写 Flash 的底层驱动代码固化在 Flash 中，万一行车过程中因电磁干扰或软件 Bug 导致单片机程序跑飞，误触了擦写代码，可能会直接把正在运行的 App 擦除，引发重大行车安全事故。
-*   **RAM 临时加载**：按照 ISO 26262 规范，擦写驱动只有在刷写时通过 0x34/0x36 动态写入 RAM 并校验。刷写完毕后，ECU 执行 0x11 软硬件复位，RAM 自动清空，擦写代码自然消失，行车安全性得到根本保障。
-
-### Q2: 详细说一下 ISO-TP 协议中各个帧的控制头 (PCI) 是如何定义的？
-*   **单帧 (SF)**: 第 1 字节高 4 位为 `0x0`，低 4 位为有效长度 (1-7 字节)。如 `[02 10 03 ...]` 代表长度为 2 的单帧。
-*   **首帧 (FF)**: 前 2 字节高 4 位为 `0x1`，剩余 12 位代表整条诊断消息的总长度（最大 4095 字节）。如 `[10 14 62 F1 ...]` 代表总长 20 字节。
-*   **流控帧 (FC)**: 第 1 字节高 4 位为 `0x3`，低 4 位为 Flow Status (0=CTS, 1=WT, 2=OVFLW)；第 2 字节为 Block Size (BS)；第 3 字节为 Separation Time (STmin)。
-*   **连续帧 (CF)**: 第 1 字节高 4 位为 `0x2`，低 4 位为 Sequence Number (SN, 0x0 - 0xF 循环递增)。
-
-### Q3: 你的 pytest 测试用例是如何设计“逆向注入测试”的？
-在 `tests/test_flashing_flow.py` 和 `tests/test_uds_services.py` 中，我设计了丰富的逆向用例：
-1.  **安全绕过注入**：直接在 Default/Extended Session 下跳过安全解锁步骤发送 0x34 下载请求，断言 ECU 返回 `NRC 0x33` (Security Access Denied)；
-2.  **暴力破解注入**：连续发送 3 次错误密钥，断言触发 `NRC 0x36` (Exceeded Attempts)，并紧接着发送 Seed 请求，断言触发 `NRC 0x37` (Time Delay Not Expired)；
-3.  **时序破坏注入**：不发送擦除 Routine 直接下发 APP 下载，断言返回 `NRC 0x24` (Request Sequence Error)；
-4.  **数据损坏注入**：在下载 APP 时传输与 hex 大小不符的数据，在 Routine 校验中发送错误 signature 校验码，断言返回 `NRC 0x72` (General Programming Failure)。
